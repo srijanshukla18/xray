@@ -162,6 +162,10 @@ XRAY helps AI assistants avoid information overload while providing deep code in
 
 XRAY performs on-demand structural analysis using ast-grep. There's no database to manage, no index to build, and no state to maintain. Each query runs fresh against your current code.
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/srijanshukla18-xray).
+
 ## Getting Started
 
 1. **Install**: See [`getting_started.md`](getting_started.md) for modern installation
