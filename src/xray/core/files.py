@@ -3,7 +3,7 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pathspec
 
@@ -24,11 +24,21 @@ def list_files(root: Path) -> List[str]:
 
 
 def _inside(root: Path, rel: str) -> bool:
-    """False for symlinks that point outside root, so their targets are never read."""
+    """Cheap listing filter: drop leaf symlinks that lead outside root. Neither git nor
+    os.walk lists paths beneath a symlinked directory; the full check in
+    resolve_inside runs before every read regardless."""
     path = os.path.join(root, rel)
-    if not os.path.islink(path):
-        return True
-    return Path(os.path.realpath(path)).is_relative_to(root)
+    return not os.path.islink(path) or resolve_inside(str(root), rel) is not None
+
+
+def resolve_inside(root: str, rel: str) -> Optional[str]:
+    """Real path of root/rel, or None if any symlink along the way leads outside root.
+
+    root must already be resolved. Called both when listing and right before every
+    read, so a path swapped for a symlink in between is still refused.
+    """
+    real = os.path.realpath(os.path.join(root, rel))
+    return real if real == root or real.startswith(root.rstrip(os.sep) + os.sep) else None
 
 
 def _in_excluded_dir(rel: str) -> bool:

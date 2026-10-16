@@ -284,3 +284,17 @@ def test_workers_ignore_modules_in_working_directory(samples, tmp_path, monkeypa
     samples.index._files.clear()
     assert samples.find_symbol("fetch_data")[0]["name"] == "fetch_data"
     assert not marker.exists()
+
+
+def test_symlinked_parent_dir_out_of_root_is_refused_at_read_time(tmp_path):
+    outside = tmp_path / "outside"
+    write(outside, {"secret.py": "def leak(): pass\n"})
+    root = tmp_path / "proj"
+    write(root, {"pkg/secret.py": "def fine(): pass\n"})
+    resolved = str(root.resolve())
+    assert symbols_mod.read_source(resolved, "pkg/secret.py") is not None
+    # Swap the directory for a symlink after listing: the read must still refuse it.
+    shutil.rmtree(root / "pkg")
+    (root / "pkg").symlink_to(outside)
+    assert symbols_mod.read_source(resolved, "pkg/secret.py") is None
+    assert symbols_mod.extract_symbols(resolved, ["pkg/secret.py"]) == {}

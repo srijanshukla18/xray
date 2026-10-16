@@ -23,6 +23,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from ast_grep_py import SgRoot
 
+from xray.core.files import resolve_inside
+
 # File extension -> ast-grep language id.
 LANGUAGE_MAP = {
     ".py": "python", ".pyi": "python",
@@ -79,9 +81,13 @@ def language_of(rel: str) -> Optional[str]:
     return LANGUAGE_MAP.get(os.path.splitext(rel)[1].lower())
 
 
-def _read(root: str, rel: str) -> Optional[str]:
+def read_source(root: str, rel: str) -> Optional[str]:
+    """File text, or None if unreadable or (via symlinks) outside root."""
+    real = resolve_inside(root, rel)
+    if real is None:
+        return None
     try:
-        with open(os.path.join(root, rel), encoding="utf-8", errors="replace") as f:
+        with open(real, encoding="utf-8", errors="replace") as f:
             return f.read()
     except OSError:
         return None
@@ -127,7 +133,7 @@ def extract_symbols(root: str, rels: List[str]) -> Dict[str, List[dict]]:
     """Worker: symbols for each readable file in rels."""
     out = {}
     for rel in rels:
-        text = _read(root, rel)
+        text = read_source(root, rel)
         lang = language_of(rel)
         if text is not None and lang:
             out[rel] = _extract(text, lang)
@@ -299,7 +305,7 @@ def find_identifier_lines(root: str, rels: List[str], name: str) -> Dict[str, Li
     pattern = "^" + re.escape(name) + "$"
     out = {}
     for rel in rels:
-        text = _read(root, rel)
+        text = read_source(root, rel)
         lang = language_of(rel)
         if text is None or not lang or name not in text:
             continue

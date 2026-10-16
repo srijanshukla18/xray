@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from rapidfuzz import fuzz
 
 from xray.core.files import list_files
-from xray.core.symbols import LANGUAGE_MAP, SymbolIndex, find_identifier_lines, language_of, map_files
+from xray.core.symbols import LANGUAGE_MAP, SymbolIndex, find_identifier_lines, language_of, map_files, read_source
 
 MAX_TREE_LINES = 1000
 _IDENTIFIER = re.compile(r"^[A-Za-z_$][\w$]*$")
@@ -176,7 +176,7 @@ class XRayIndexer:
         references = []
         for rel, ln in hits[:limit]:
             if rel not in file_lines:
-                file_lines[rel] = (self.root_path / rel).read_text(errors="replace").splitlines()
+                file_lines[rel] = (read_source(str(self.root_path), rel) or "").splitlines()
             src = file_lines[rel]
             lo, hi = max(0, ln - 1 - context_lines), min(len(src), ln + context_lines)
             references.append({"file": self._abs(rel), "line": ln, "text": _dedent(src[lo:hi])})
