@@ -21,12 +21,14 @@ if ! command -v uv &>/dev/null; then
 fi
 echo -e "${GREEN}✓${NC} uv $(uv --version | cut -d' ' -f2)"
 
-# Install the checkout this script lives in, if run from one; otherwise from GitHub.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/pyproject.toml" ]] && grep -q '^name = "xray"' "$SCRIPT_DIR/pyproject.toml"; then
-    SOURCE="$SCRIPT_DIR"
-else
-    SOURCE="git+https://github.com/srijanshukla18/xray"
+# Install the checkout this script lives in when run as a file from one. Under
+# `curl | bash` there is no script file, so never look at the current directory.
+SOURCE="git+https://github.com/srijanshukla18/xray"
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "$SCRIPT_DIR/pyproject.toml" ]] && grep -q '^name = "xray"' "$SCRIPT_DIR/pyproject.toml"; then
+        SOURCE="$SCRIPT_DIR"
+    fi
 fi
 
 echo -e "${YELLOW}→${NC} Installing XRAY from $SOURCE..."

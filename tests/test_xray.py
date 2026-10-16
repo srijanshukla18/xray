@@ -247,3 +247,40 @@ def test_worker_processes_match_in_process_results(samples, monkeypatch):
     fresh.index._files.clear()  # force re-extraction through the workers
     assert fresh.find_symbol("User", limit=50) == serial_symbols
     assert fresh.what_breaks("User") == serial_refs
+
+
+# --- hardening ---------------------------------------------------------------
+
+def test_symlinks_out_of_root_are_ignored(tmp_path):
+    outside = tmp_path / "outside"
+    write(outside, {"secret.py": "API_KEY = 'x'\ndef leak(): pass\n"})
+    root = tmp_path / "proj"
+    write(root, {"real.py": "def real(): pass\n", "inner.py": "def inner(): pass\n"})
+    (root / "link.py").symlink_to(outside / "secret.py")
+    (root / "ok_link.py").symlink_to(root / "inner.py")
+    assert list_files(root) == ["inner.py", "ok_link.py", "real.py"]
+    assert XRayIndexer(str(root)).find_symbol("leak") == []
+
+
+def test_repo_git_config_cannot_run_commands(tmp_path):
+    if not shutil.which("git"):
+        pytest.skip("git not installed")
+    marker = tmp_path / "pwned"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "core.fsmonitor", f"touch {marker}; false"], cwd=repo, check=True)
+    write(repo, {"a.py": ""})
+    assert list_files(repo) == ["a.py"]
+    assert not marker.exists()
+
+
+def test_workers_ignore_modules_in_working_directory(samples, tmp_path, monkeypatch):
+    evil = tmp_path / "evil_cwd"
+    marker = tmp_path / "pwned"
+    write(evil, {"json.py": f"open({str(marker)!r}, 'w').close()\nfrom json_real import *\n"})
+    monkeypatch.chdir(evil)
+    monkeypatch.setattr(symbols_mod, "_PARALLEL_MIN", 1)
+    samples.index._files.clear()
+    assert samples.find_symbol("fetch_data")[0]["name"] == "fetch_data"
+    assert not marker.exists()

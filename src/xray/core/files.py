@@ -20,7 +20,15 @@ def list_files(root: Path) -> List[str]:
     files = _git_files(root)
     if files is None:
         files = _walk_files(root)
-    return sorted(f for f in files if not _in_excluded_dir(f))
+    return sorted(f for f in files if not _in_excluded_dir(f) and _inside(root, f))
+
+
+def _inside(root: Path, rel: str) -> bool:
+    """False for symlinks that point outside root, so their targets are never read."""
+    path = os.path.join(root, rel)
+    if not os.path.islink(path):
+        return True
+    return Path(os.path.realpath(path)).is_relative_to(root)
 
 
 def _in_excluded_dir(rel: str) -> bool:
@@ -31,7 +39,9 @@ def _git_files(root: Path):
     """Tracked + untracked-but-not-ignored files, or None if root isn't in a git work tree."""
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            # A repo's own config can make git run arbitrary commands via core.fsmonitor.
+            ["git", "-c", "core.fsmonitor=false", "ls-files", "-z", "--cached", "--others",
+             "--exclude-standard"],
             cwd=root, capture_output=True, timeout=60,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):

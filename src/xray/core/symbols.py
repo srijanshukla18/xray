@@ -100,7 +100,9 @@ def map_files(fn: Callable[..., dict], root: str, rels: List[str], *args) -> dic
 
     def run(chunk: List[str]) -> dict:
         job = json.dumps({"fn": fn.__name__, "root": root, "rels": chunk, "args": list(args)})
-        result = subprocess.run([sys.executable, "-m", "xray.core.symbols"], input=job,
+        # -P: don't put the inherited working directory on sys.path, or a stray
+        # json.py (say) wherever the MCP client launched us would be imported.
+        result = subprocess.run([sys.executable, "-P", "-m", "xray.core.symbols"], input=job,
                                 capture_output=True, text=True, env=env)
         if result.returncode != 0:
             raise RuntimeError(f"xray worker failed: {result.stderr.strip()[-500:]}")
