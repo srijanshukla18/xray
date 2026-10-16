@@ -1,45 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# XRAY MCP server uninstaller. Usage: bash uninstall.sh
 
-# XRAY MCP Server Uninstallation Script
-# Usage: bash uninstall.sh
+set -euo pipefail
 
-set -e
-
-echo "🗑️ Uninstalling XRAY MCP Server..."
-
-# Colors for output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Check if uv is installed
-if ! command -v uv &> /dev/null; then
-    echo -e "${RED}❌${NC} uv is not installed. Uninstallation requires uv."
-    echo "Please install uv (https://github.com/astral-sh/uv) and try again."
-    exit 1
-fi
-
-# Uninstall the xray tool
-echo -e "${YELLOW}🔧${NC} Uninstalling xray tool..."
-if uv tool uninstall xray; then
-    echo -e "${GREEN}✓${NC} xray tool uninstalled successfully."
+if command -v uv &>/dev/null && uv tool uninstall xray 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Removed the xray uv tool"
 else
-    echo -e "${YELLOW}⚠${NC} Could not uninstall xray tool. It might not be installed."
+    echo -e "${YELLOW}!${NC} xray uv tool was not installed"
 fi
 
-# Remove the installation directory
-INSTALL_DIR="$HOME/.xray"
-if [ -d "$INSTALL_DIR" ]; then
-    echo -e "${YELLOW}🗑️${NC} Removing installation directory: $INSTALL_DIR"
-    rm -rf "$INSTALL_DIR"
-    echo -e "${GREEN}✓${NC} Installation directory removed."
-fi
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/xray"
+for dir in "$CACHE_DIR" "$HOME/.xray" "/tmp/.xray_cache"; do  # last two: pre-0.7 install/cache locations
+    if [[ -d "$dir" ]]; then
+        rm -rf "$dir"
+        echo -e "${GREEN}✓${NC} Removed $dir"
+    fi
+done
 
-# Verify uninstallation
-if ! command -v xray-mcp &> /dev/null; then
-    echo -e "${GREEN}✅ Uninstallation complete!${NC}"
+if command -v xray-mcp &>/dev/null; then
+    echo -e "${YELLOW}!${NC} xray-mcp is still on PATH at $(command -v xray-mcp) (installed some other way?)"
 else
-    echo -e "${RED}❌ Uninstallation failed.${NC} xray-mcp is still on the PATH."
-    echo "This might be due to your shell caching the command. Please restart your shell."
-fi 
+    echo -e "${GREEN}✓${NC} Uninstalled. Remove xray from your MCP client config too."
+fi

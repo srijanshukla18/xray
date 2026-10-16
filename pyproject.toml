@@ -1,9 +1,9 @@
 [project]
 name = "xray"
-version = "0.6.1"
-description = "XRAY: Progressive code intelligence for AI assistants - Map, Find, Impact"
+version = "0.7.0"
+description = "MCP server that gives AI coding agents compact code maps, symbol lookup and reference search"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
     { name = "Srijan Shukla", email = "srijanshukla18@gmail.com" }
@@ -14,15 +14,20 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "fastmcp>=0.1.0",
-    "ast-grep-cli>=0.39.0",
-    "thefuzz>=0.20.0",
+    "fastmcp>=4.0",
+    "ast-grep-py>=0.39",
+    "rapidfuzz>=3.0",
+    "pathspec>=0.12",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8"]
 
 [project.urls]
 Homepage = "https://github.com/srijanshukla18/xray"
@@ -38,3 +43,6 @@ where = ["src"]
 
 [project.scripts]
 xray-mcp = "xray.mcp_server:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

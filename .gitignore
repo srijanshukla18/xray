@@ -11,3 +11,8 @@ node_modules/
 
 # Python cache
 __pycache__/
+# Virtualenv
+.venv/
+
+# Old XRAY database (pre-0.7)
+.xray/

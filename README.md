@@ -1,528 +1,188 @@
-# XRAY MCP - Progressive Code Intelligence for AI Assistants
+# XRAY
 
-[![Python](https://img.shields.io/badge/Python-3.10+-green)](https://python.org) [![MCP](https://img.shields.io/badge/MCP-Compatible-purple)](https://modelcontextprotocol.io) [![ast-grep](https://img.shields.io/badge/Powered_by-ast--grep-orange)](https://ast-grep.github.io)
+**An MCP server that lets coding agents see a codebase's shape — layout, signatures, definitions, references — without reading whole files.**
 
-## ❌ Without XRAY
+[![Python](https://img.shields.io/badge/Python-3.11+-green)](https://python.org) [![MCP](https://img.shields.io/badge/MCP-Compatible-purple)](https://modelcontextprotocol.io) [![ast-grep](https://img.shields.io/badge/Powered_by-ast--grep-orange)](https://ast-grep.github.io)
 
-AI assistants struggle with codebase understanding. You get:
+## Why
 
-- ❌ "I can't see your code structure"
-- ❌ "I don't know what depends on this function"
-- ❌ Generic refactoring advice without impact analysis
-- ❌ No understanding of symbol relationships
+Coding agents already have grep, glob and file reads. Where they burn context is:
 
-## ✅ With XRAY
+- **Reading a 1,500-line file to learn three function signatures.** `read_interface` returns the file's API — every class, method, function and type with its signature, one-line doc and line number — so the agent reads only the lines it needs.
+- **Grepping a name and wading through comments, strings and partial matches.** `find_symbol` returns definitions only, ranked, fuzzy. `what_breaks` returns identifier references with comments and string literals excluded.
 
-XRAY gives AI assistants code navigation capabilities. Add `use XRAY tools` to your prompt:
+| | grep / rg | XRAY | LSP |
+|---|---|---|---|
+| Setup | none | `uv tool install` | a server per language |
+| Finds definitions only | ✗ | ✓ | ✓ |
+| Skips comments & strings | ✗ | ✓ | ✓ |
+| File API without the bodies | ✗ | ✓ | partial (document symbols) |
+| Type-aware references | ✗ | ✗ (name-based) | ✓ |
 
-```txt
-Analyze the UserService class and show me what would break if I change the authenticate method. use XRAY tools
-```
+XRAY sits between the two: syntax-aware via tree-sitter, zero per-language setup, and honest about not resolving types.
 
-```txt
-Find all functions that call validate_user and show their dependencies. use XRAY tools
-```
-
-XRAY provides three focused tools:
-
-- 🗺️ **Map** (`explore_repo`) - See project structure with symbol skeletons
-- 🔍 **Find** (`find_symbol`) - Locate functions and classes with fuzzy search
-- 💥 **Impact** (`what_breaks`) - Find where a symbol is referenced
-
-## 🚀 Quick Install
-
-### Modern Install with uv (Recommended)
+## Install
 
 ```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone and install XRAY
-git clone https://github.com/srijanshukla18/xray.git
-cd xray
-uv tool install .
+uv tool install git+https://github.com/srijanshukla18/xray
 ```
 
-### Automated Install with uv
+Then register the `xray-mcp` command with your client.
 
-For the quickest setup, this script automates the `uv` installation process.
+**Claude Code**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/srijanshukla18/xray/main/install.sh | bash
+claude mcp add xray -s user -- xray-mcp
 ```
 
-### Generate Config
-
-```bash
-# Get config for your tool
-python mcp-config-generator.py cursor local_python
-python mcp-config-generator.py claude docker  
-python mcp-config-generator.py vscode source
-```
-
-## Language Support
-
-XRAY uses [ast-grep](https://ast-grep.github.io), a tree-sitter powered structural search tool, providing accurate parsing for:
-- **Python** - Functions, classes, methods, async functions
-- **JavaScript** - Functions, classes, arrow functions, imports
-- **TypeScript** - All JavaScript features plus interfaces, type aliases
-- **Go** - Functions, structs, interfaces, methods
-
-ast-grep ensures structural accuracy - it understands code syntax, not just text patterns.
-
-## The XRAY Workflow - Progressive Discovery
-
-### 1. Map - Start Simple, Then Zoom In
-```python
-# First: Get the big picture (directories only)
-tree = explore_repo("/path/to/project")
-# Returns:
-# /path/to/project/
-# ├── src/
-# ├── tests/
-# ├── docs/
-# └── config/
-
-# Then: Zoom into areas of interest with full details
-tree = explore_repo("/path/to/project", focus_dirs=["src"], include_symbols=True)
-# Returns:
-# /path/to/project/
-# └── src/
-#     ├── auth.py
-#     │   ├── class AuthService: # Handles user authentication
-#     │   ├── def authenticate(username, password): # Validates user credentials
-#     │   └── def logout(session_id): # Ends user session
-#     └── models.py
-#         ├── class User(BaseModel): # User account model
-#         └── ... and 3 more
-
-# Or: Limit depth for large codebases
-tree = explore_repo("/path/to/project", max_depth=2, include_symbols=True)
-```
-
-### 2. Find - Locate Specific Symbols
-```python
-# Find symbols matching "authenticate" (fuzzy search)
-symbols = find_symbol("/path/to/project", "authenticate")
-# Returns list of exact symbol objects with name, type, path, line numbers
-```
-
-### 3. Impact - See What Would Break
-```python
-# Find where authenticate_user is used
-symbol = symbols[0]  # From find_symbol
-result = what_breaks(symbol)
-# Returns: {"references": [...], "total_count": 12, 
-#          "note": "Found 12 potential references based on text search..."}
-```
-
-
-## Architecture
-
-```
-FastMCP Server (mcp_server.py)
-    ↓
-Core Engine (src/xray/core/)
-    └── indexer.py      # Orchestrates ast-grep for structural analysis
-    ↓
-ast-grep (external binary)
-    └── Tree-sitter powered structural search
-```
-
-**Stateless design** - No database, no persistent index. Each operation runs fresh ast-grep queries for real-time accuracy.
-
-## Why ast-grep?
-
-Traditional grep searches text. ast-grep searches code structure:
-
-- **grep**: Finds "authenticate" in function names, variables, comments, strings
-- **ast-grep**: Finds only `def authenticate()` or `function authenticate()` definitions
-
-This structural approach provides clean, accurate results essential for reliable code intelligence.
-
-## Performance Characteristics
-
-- **Startup**: Fast - launches ast-grep subprocess
-- **File tree**: Python directory traversal
-- **Symbol search**: Runs multiple ast-grep patterns, speed depends on codebase size
-- **Impact analysis**: Name-based search across all files
-- **Memory**: Minimal - no persistent state
-
-## What Makes This Practical
-
-1. **Progressive Discovery** - Start with directories, add symbols only where needed
-2. **Smart Caching** - Symbol extraction cached per git commit for instant re-runs
-3. **Flexible Focus** - Use `focus_dirs` to zoom into specific parts of large codebases
-4. **Enhanced Symbols** - See function signatures and docstrings, not just names
-5. **Based on tree-sitter** - ast-grep provides accurate structural analysis
-
-XRAY helps AI assistants avoid information overload while providing deep code intelligence where needed.
-
-## Stateless Design
-
-XRAY performs on-demand structural analysis using ast-grep. There's no database to manage, no index to build, and no state to maintain. Each query runs fresh against your current code.
-
-## Getting Started
-
-1. **Install**: See [`getting_started.md`](getting_started.md) for modern installation
-2. **Map the terrain**: `explore_repo("/path/to/project")`
-3. **Find your target**: `find_symbol("/path/to/project", "UserService")`
-4. **Assess impact**: `what_breaks(symbol)`
-
-## The XRAY Philosophy
-
-XRAY bridges the gap between simple text search and complex LSP servers:
-
-- **More than grep** - Matches code syntax patterns, not just text
-- **Less than LSP** - No language servers or complex setup
-- **Practical for AI** - Provides structured data about code relationships
-
-A simple tool that helps AI assistants navigate codebases more effectively than text search alone.
-
-## Architectural Journey & Design Rationale
-
-The current implementation of XRAY is the result of a rigorous evaluation of multiple code analysis methodologies. My journey involved prototyping and assessing several distinct approaches, each with its own set of trade-offs. Below is a summary of the considered architectures and the rationale for my final decision.
-
-1.  **Naive Grep-Based Analysis**: I initially explored a baseline approach using standard `grep` for symbol identification. While expedient, this method proved fundamentally inadequate due to its inability to differentiate between syntactical constructs and simple text occurrences (e.g., comments, strings, variable names). The high signal-to-noise ratio rendered it impractical for reliable code intelligence.
-
-2.  **Tree-Sitter Native Integration**: A direct integration with `tree-sitter` was evaluated to leverage its powerful parsing capabilities. However, this path was fraught with significant implementation complexities, including intractable errors within the parser generation and binding layers. The maintenance overhead and steep learning curve for custom grammar development were deemed prohibitive for a lean, multi-language tool.
-
-3.  **Language Server Protocol (LSP)**: I considered leveraging the Language Server Protocol for its comprehensive, standardized approach to code analysis. This was ultimately rejected due to the excessive operational burden it would impose on the end-user, requiring them to install, configure, and manage separate LSPs for each language in their environment. This friction conflicted with my goal of a lightweight, zero-configuration user experience.
-
-4.  **Comby-Based Structural Search**: `Comby` was explored for its structural search and replacement capabilities. Despite its promising feature set, I encountered significant runtime instability and idiosyncratic behavior that undermined its reliability for mission-critical code analysis. The tool's performance and consistency did not meet my stringent requirements for a production-ready system.
-
-5.  **ast-grep as the Core Engine**: My final and current architecture is centered on `ast-grep`. This tool provides the optimal balance of structural awareness, performance, and ease of integration. By leveraging `tree-sitter` internally, it offers robust, syntactically-aware code analysis without the complexities of direct `tree-sitter` integration or the overhead of LSPs. Its reliability and rich feature set for structural querying made it the unequivocal choice for XRAY's core engine.
-
----
-
-# Getting Started with XRAY - Modern Installation with uv
-
-XRAY is a minimal-dependency code intelligence system that enhances AI assistants' understanding of codebases. This guide shows how to install and use XRAY with the modern `uv` package manager.
-
-## Prerequisites
-
-- Python 3.10 or later
-- [uv](https://docs.astral.sh/uv/) - Fast Python package manager
-
-### Installing uv
-
-```bash
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Or with pip
-pip install uv
-```
-
-## Installation Options
-
-### Option 1: Automated Install (Easiest)
-
-For the quickest setup, use the one-line installer from the `README.md`. This will handle everything for you.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/srijanshukla18/xray/main/install.sh | bash
-```
-
-### Option 2: Quick Try with uvx (Recommended for Testing)
-
-Run XRAY directly without installation using `uvx`:
-
-```bash
-# Clone the repository
-git clone https://github.com/srijanshukla18/xray.git
-cd xray
-
-# Run XRAY directly with uvx
-uvx --from . xray-mcp
-```
-
-### Option 3: Install as a Tool (Recommended for Regular Use)
-
-Install XRAY as a persistent tool:
-
-```bash
-# Clone and install
-git clone https://github.com/srijanshukla18/xray.git
-cd xray
-
-# Install with uv
-uv tool install .
-
-# Now you can run xray-mcp from anywhere
-xray-mcp
-```
-
-### Option 4: Development Installation
-
-For contributing or modifying XRAY:
-
-```bash
-# Clone the repository
-git clone https://github.com/srijanshukla18/xray.git
-cd xray
-
-# Create and activate virtual environment with uv
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install in editable mode
-uv pip install -e .
-
-# Run the server
-python -m xray.mcp_server
-```
-
-## Configure Your AI Assistant
-
-After installation, configure your AI assistant to use XRAY:
-
-### Using the MCP Config Generator (Recommended)
-
-For easier configuration, use the `mcp-config-generator.py` script located in the XRAY repository. This script can generate the correct JSON configuration for various AI assistants and installation methods.
-
-To use it:
-
-1.  Navigate to the XRAY repository root:
-    ```bash
-    cd /path/to/xray
-    ```
-2.  Run the script with your desired tool and installation method. For example, to get the configuration for Claude Desktop with an installed `xray-mcp` script:
-    ```bash
-    python mcp-config-generator.py claude installed_script
-    ```
-    Or for VS Code with a local Python installation:
-    ```bash
-    python mcp-config-generator.py vscode local_python
-    ```
-    The script will print the JSON configuration and instructions on where to add it.
-
-    Available tools: `cursor`, `claude`, `vscode`
-    Available methods: `local_python`, `docker`, `source`, `installed_script` (method availability varies by tool)
-
-### Manual Configuration (Advanced)
-
-If you prefer to configure manually, here are examples for common AI assistants:
-
-#### Claude CLI (Claude Code)
-
-For Claude CLI users, simply run:
-
-```bash
-claude mcp add xray xray-mcp -s local
-```
-
-Then verify it's connected:
-
-```bash
-claude mcp list | grep xray
-```
-
-#### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
+**Claude Desktop, Cursor, VS Code, others** — add to the client's MCP config:
 
 ```json
+{ "mcpServers": { "xray": { "command": "xray-mcp" } } }
+```
+
+To run without installing: `uvx --from git+https://github.com/srijanshukla18/xray xray-mcp`.
+
+There is also `install.sh`, which installs uv if needed and then runs the command above.
+
+## Tools
+
+All paths in results are absolute. `root_path` is the project directory.
+
+### `explore_repo(root_path, max_depth=None, include_symbols=False, focus_dirs=None, max_symbols_per_file=5)`
+
+Directory tree honouring `.gitignore` (via `git ls-files`, or a `.gitignore` parser outside git). Directories cut off by `max_depth` show their file count. Output is capped at 1,000 lines.
+
+```
+explore_repo("/home/me/xray", max_depth=2)
+
+/home/me/xray/
+├── src/
+│   └── xray/ (6 files)
+├── tests/
+│   ├── __init__.py
+│   └── test_xray.py
+├── pyproject.toml
+└── README.md
+```
+
+`focus_dirs` takes paths relative to the root; with `include_symbols=True` each file lists its signatures:
+
+```
+explore_repo("/home/me/xray", focus_dirs=["src/xray/core"], include_symbols=True, max_symbols_per_file=3)
+
+/home/me/xray/
+└── src/
+    └── xray/
+        └── core/
+            ├── files.py
+            │   ├── def list_files(root: Path) -> List[str]  # Return POSIX paths, relative to root, of every non-ignored…
+            │   ├── def _in_excluded_dir(rel: str) -> bool
+            │   ├── def _git_files(root: Path)  # Tracked + untracked-but-not-ignored files, or None if root isn't in…
+            │   └── ... and 1 more
+            ...
+```
+
+### `find_symbol(root_path, query, limit=10)`
+
+Fuzzy search over definitions. Case and separators are ignored (`"user service"` finds `UserService`), a `Class.method` query matches methods by their class, and an exact spelling wins ties.
+
+```json
+find_symbol("/home/me/xray", "symbols for")
+
+[{
+  "name": "symbols_for", "type": "method", "parent": "SymbolIndex",
+  "path": "/home/me/xray/src/xray/core/symbols.py", "start_line": 357, "end_line": 385,
+  "signature": "def symbols_for(self, rel_paths: List[str], prune: bool = False) -> Dict[str, List[dict]]"
+}]
+```
+
+### `read_interface(root_path, file_path)`
+
+A file's API, nested by scope, with line numbers. Functions defined inside other functions are left out — they're not part of the interface. Paths outside `root_path` are refused.
+
+```
+read_interface("/home/me/xray", "src/xray/core/indexer.py")
+
+src/xray/core/indexer.py (13 symbols; left column is the line number)
+ 17  def _norm(text: str) -> str
+ 21  class XRayIndexer
+ 22    def __init__(self, root_path: str)
+ 28    def _rel(self, path: str) -> str  # Resolve a user-supplied path to a POSIX path relative to root, refusing…
+105    def find_symbol(self, query: str, limit: int = 10) -> List[Dict[str, Any]]
+134    def read_interface(self, file_path: str) -> str
+...
+```
+
+### `what_breaks(root_path, name, path=None, line=None, limit=50)`
+
+Every identifier spelled exactly `name`, excluding comments, string literals and the definitions themselves (which are listed separately). Pass the `path` and `line` of the definition you mean, and XRAY warns when other definitions share the name.
+
+```json
+what_breaks("/home/me/xray", "list_files", path="src/xray/core/files.py", line=18, limit=2)
+
 {
-  "mcpServers": {
-    "xray": {
-      "command": "uvx",
-      "args": ["--from", "/path/to/xray", "xray-mcp"]
-    }
-  }
+  "symbol": "list_files",
+  "total_references": 7,
+  "files": 2,
+  "references": [
+    {"file": "/home/me/xray/src/xray/core/indexer.py", "line": 9,
+     "text": "from xray.core.files import list_files\nfrom xray.core.symbols import ..."},
+    {"file": "/home/me/xray/src/xray/core/indexer.py", "line": 50,
+     "text": ") -> str:\n    files = list_files(self.root_path)\n    if focus_dirs:"}
+  ],
+  "definitions": [{"path": "/home/me/xray/src/xray/core/files.py", "line": 18}],
+  "note": "Name-based: every identifier spelled exactly like this, excluding comments and strings. ...",
+  "truncated": "showing first 2 of 7; raise limit to see more"
 }
 ```
 
-Or if installed as a tool:
+**It is name-based, not type-aware.** `what_breaks("save")` finds every `.save` in the repo, not just the one on your class. Use it as a precise grep, not as a compiler.
 
-```json
-{
-  "mcpServers": {
-    "xray": {
-      "command": "xray-mcp"
-    }
-  }
-}
-```
+## Languages
 
-#### Cursor
+| Language | Extensions | Extracted |
+|---|---|---|
+| Python | `.py` `.pyi` | functions, async functions, classes, methods; first line of docstrings |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | functions, generators, classes, methods, `const f = () =>` / `function` expressions |
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` | JavaScript's set plus interfaces, type aliases, enums, namespaces, abstract classes |
+| Go | `.go` | functions, methods, structs, interfaces, other type declarations |
 
-Settings → Cursor Settings → MCP → Add new global MCP server:
+For non-Python languages the doc is the first line of the `//` or `/** */` comment directly above the definition.
 
-```json
-{
-  "mcpServers": {
-    "xray": {
-      "command": "xray-mcp"
-    }
-  }
-}
-```
+## How it works
 
-## Minimal Dependencies
+- **Files**: `git ls-files --cached --others --exclude-standard`, so nested `.gitignore`s, negations and global excludes all behave exactly as in git. Dependency and build directories (`node_modules`, `vendor`, `.venv`, `dist`, …) are always skipped.
+- **Parsing**: [ast-grep](https://ast-grep.github.io)'s Python binding (tree-sitter grammars). One pass per file extracts every definition; `explore_repo`, `find_symbol` and `read_interface` all read that same data.
+- **Cache**: `~/.cache/xray/<hash-of-root>.sqlite` (honours `XDG_CACHE_HOME`), one row per file keyed on mtime and size. Only changed files are re-parsed; the cache survives server restarts.
+- **Large repos**: batches of 200+ files are spread over up to 8 worker processes.
 
-One of XRAY's best features is its minimal dependency profile. You don't need to install a suite of language servers. XRAY uses:
+Measured on a 21,000-file Go/TS repo (Apple M-series, 10 cores): first `find_symbol` 8 s (builds the cache), later calls ~1 s, `what_breaks` ~2 s.
 
-- **ast-grep**: A single, fast binary for structural code analysis.
-- **Python**: For the server and core logic.
-
-This means you can start using XRAY immediately after installation with no complex setup!
-
-## Verify Installation
-
-### 1. Check XRAY is accessible
+## Development
 
 ```bash
-# If installed as tool
-xray-mcp --version
-
-# If using uvx
-uvx --from /path/to/xray xray-mcp --version
+git clone https://github.com/srijanshukla18/xray && cd xray
+uv sync
+uv run pytest
 ```
 
-### 2. Test basic functionality
+`test_samples/` holds one file per language; the tests assert exact names and line numbers against them, and drive the tools through a real MCP client.
 
-Create a test file `test_xray.py`:
-
-```python
-def hello_world():
-    print("Hello from XRAY test!")
-
-def calculate_sum(a, b):
-    return a + b
-
-class Calculator:
-    def multiply(self, x, y):
-        return x * y
-```
-
-### 3. In your AI assistant, test these commands:
-
-```
-Build the index for the current directory. use XRAY tools
-```
-
-Expected: Success message with files indexed
-
-```
-Find all functions containing "hello". use XRAY tools
-```
-
-Expected: Should find `hello_world` function
-
-```
-What would break if I change the multiply method? use XRAY tools
-```
-
-Expected: Impact analysis showing any dependencies
-
-## Usage Examples
-
-Once configured, use XRAY by adding "use XRAY tools" to your prompts:
-
-```
-# Index a codebase
-"Index the src/ directory for analysis. use XRAY tools"
-
-# Find symbols
-"Find all classes that contain 'User' in their name. use XRAY tools"
-
-# Impact analysis
-"What breaks if I change the authenticate method in UserService? use XRAY tools"
-
-# Dependency tracking
-"What does the PaymentProcessor class depend on? use XRAY tools"
-
-# Location queries
-"What function is defined at line 125 in main.py? use XRAY tools"
-```
-
-## Troubleshooting
-
-### uv not found
-
-Make sure uv is in your PATH:
+## Uninstall
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-export PATH="$HOME/.cargo/bin:$PATH"
+uv tool uninstall xray && rm -rf ~/.cache/xray
 ```
 
-### Permission denied
+or run `uninstall.sh`.
 
-On macOS/Linux, you might need to make the script executable:
+## Design notes
 
-```bash
-chmod +x ~/.local/bin/xray-mcp
-```
+Approaches tried before settling on this one:
 
-### Python version issues
-
-XRAY requires Python 3.10+. Check your version:
-
-```bash
-python --version
-
-# If needed, install Python 3.10+ with uv
-uv python install 3.10
-```
-
-### MCP connection issues
-
-1. Check XRAY is running: `xray-mcp --test`
-2. Verify your MCP config JSON is valid
-3. Restart your AI assistant after config changes
-
-## Advanced Configuration
-
-### Custom Database Location
-
-Set the `XRAY_DB_PATH` environment variable:
-
-```bash
-export XRAY_DB_PATH="$HOME/.xray/databases"
-```
-
-### Debug Mode
-
-Enable debug logging:
-
-```bash
-export XRAY_DEBUG=1
-```
-
-## What's Next?
-
-1. **Index your first repository**: In your AI assistant, ask it to "Build the index for my project. use XRAY tools"
-
-2. **Explore the tools**:
-   - `build_index` - Visual file tree of your repository
-   - `find_symbol` - Fuzzy search for functions, classes, and methods
-   - `what_breaks` - Find what code depends on a symbol (reverse dependencies)
-   - `what_depends` - Find what a symbol depends on (calls and imports)
-   
-   Note: Results may include matches from comments or strings. The AI assistant will intelligently filter based on context.
-
-3. **Read the documentation**: Check out the [README](README.md) for detailed examples and API reference
-
-## Why XRAY Uses a Minimal Dependency Approach
-
-XRAY is designed for simplicity and ease of use. It relies on:
-
-- **ast-grep**: A powerful and fast single-binary tool for code analysis.
-- **Python**: For its robust standard library and ease of scripting.
-
-This approach avoids the complexity of setting up and managing multiple language servers, while still providing accurate, structural code intelligence.
-
-## Benefits of Using uv
-
-- **10-100x faster** than pip for installations
-- **No virtual environment hassles** - uv manages everything
-- **Reproducible installs** - uv.lock ensures consistency
-- **Built-in Python management** - install any Python version
-- **Global tool management** - like pipx but faster
-
-Happy coding with XRAY! 🚀
+1. **grep** — can't tell a definition from a comment or a string.
+2. **Raw tree-sitter bindings** — grammar and binding build problems across platforms.
+3. **LSP** — precise, but asks users to install and run a language server per language.
+4. **Comby** — unstable for this workload.
+5. **ast-grep CLI** — correct, but its JSON repeats each matched node's full text; on a 20k-file repo that was ~1 GB of output per index. The in-process binding gives the same parser without the serialisation.
